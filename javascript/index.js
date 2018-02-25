@@ -1,4 +1,4 @@
-const RTC_CONFIG = {iceServers: [{'urls': 'stun:stun.l.google.com:19302'}], mandatory: {OfferToReceiveVideo: true}}
+const RTC_CONFIG = {iceServers: [{'urls': 'stun:stun.l.google.com:19302'}], mandatory: {OfferToReceiveVideo: true, OfferToReceiveAudio: true}}
 
 const sessionKey = Math.random().toString(36).substring(7)
 let peerConnections = {}
@@ -15,9 +15,20 @@ let getPeerConnection = (remoteSessionKey, localMediaStream, ws) => {
 
     ws.send(JSON.stringify({method: 'candidate', args: {src: sessionKey, dst: remoteSessionKey, candidate: event.candidate.toJSON()}}))
   }
+
+  let hasHandled = false
   pc.ontrack = (event) => {
+    if (hasHandled) {
+      return
+    }
+    hasHandled = true
+
     let video = document.createElement('video')
+    video.id = remoteSessionKey
+
     let container = document.getElementById('remotes')
+
+    video.controls = true
     container.appendChild(video)
 
     video.srcObject = event.streams[0]
@@ -60,10 +71,17 @@ let handleSdp = (ws, args, localMediaStream) => {
   console.log('handleSdp')
 }
 let handleCandidate = (ws, args, localMediaStream) => {
-  let peerConnections = getPeerConnection(args.src, localMediaStream, ws)
-  peerConnections.addIceCandidate(new RTCIceCandidate(args.candidate))
+  let peerConnection = getPeerConnection(args.src, localMediaStream, ws)
+  peerConnection.addIceCandidate(new RTCIceCandidate(args.candidate))
 }
 
+let handleExit = (ws, args, localMediaStream) => {
+  let peerConnection = getPeerConnection(args.src, localMediaStream, ws)
+  if (peerConnection) {
+    peerConnection.close()
+  }
+  document.getElementById(args.sessionKey).remove()
+}
 
 let wsOnMessage = (ws, event, localMediaStream) => {
   let message = JSON.parse(event.data);
@@ -82,6 +100,9 @@ let wsOnMessage = (ws, event, localMediaStream) => {
     case 'members':
       dispatchMethod = handleMembers
       break
+    case 'exit':
+      dispatchMethod = handleExit
+      break
     default:
       throw `Failed to handle ${event.data}`
   }
@@ -89,7 +110,8 @@ let wsOnMessage = (ws, event, localMediaStream) => {
 }
 
 navigator.getUserMedia({
-  video: true
+  video: true,
+  audio: true
 },
 function(localMediaStream) {
   let el = document.getElementById('foobar')
