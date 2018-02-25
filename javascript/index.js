@@ -6,7 +6,9 @@ let PionEvents = window.PionEvents = {
   WEBSOCKET_CLOSE: 'WEBSOCKET_CLOSE',
   NEW_MEDIA: 'NEW_MEDIA',
   PEER_ENTER_ROOM: 'PEER_ENTER_ROOM',
-  PEER_LEAVE_ROOM: 'PEER_LEAVE_ROOM'
+  PEER_LEAVE_ROOM: 'PEER_LEAVE_ROOM',
+  PEER_P2P_MEDIA_STATUS: 'PEER_P2P_MEDIA_STATUS',
+  PEER_P2P_SIGNALING_STATUS: 'PEER_P2P_SIGNALING_STATUS'
 }
 
 function PionSession (domain, sessionKey, mediaStream) { // eslint-disable-line no-unused-vars
@@ -15,7 +17,6 @@ function PionSession (domain, sessionKey, mediaStream) { // eslint-disable-line 
   }
 
   let peerConnections = {}
-
   let getPeerConnection = (remoteSessionKey, ws) => {
     if (peerConnections[remoteSessionKey]) {
       return peerConnections[remoteSessionKey]
@@ -28,6 +29,14 @@ function PionSession (domain, sessionKey, mediaStream) { // eslint-disable-line 
       }
 
       ws.send(JSON.stringify({method: 'candidate', args: {src: sessionKey, dst: remoteSessionKey, candidate: event.candidate.toJSON()}}))
+    }
+
+    pc.oniceconnectionstatechange = (event) => {
+      this.eventHandler({type: PionEvents.PEER_P2P_MEDIA_STATUS, sessionKey: remoteSessionKey, mediaState: pc.iceConnectionState})
+    }
+
+    pc.onsignalingstatechange = (event) => {
+      this.eventHandler({type: PionEvents.PEER_P2P_SIGNALING_STATUS, sessionKey: remoteSessionKey, signalingState: pc.signalingState})
     }
 
     let hasHandled = false
@@ -88,12 +97,10 @@ function PionSession (domain, sessionKey, mediaStream) { // eslint-disable-line 
     mandatory: {OfferToReceiveVideo: true, OfferToReceiveAudio: true}
   }
 
-  this.eventHandler = event => {
-    console.warn('Please set an event handler')
-    console.warn(event)
-  }
-
   this.start = () => {
+    if (!this.eventHandler) {
+      throw new Error('You must set an event handler')
+    }
     const ws = new WebSocket(`wss://${domain}?sessionKey=${sessionKey}`)
     ws.onmessage = () => {
       let message = JSON.parse(event.data)
