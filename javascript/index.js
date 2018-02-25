@@ -92,6 +92,10 @@ function PionSession (domain, sessionKey, mediaStream) { // eslint-disable-line 
     this.eventHandler({type: PionEvents.PEER_LEAVE_ROOM, sessionKey: args.sessionKey})
   }
 
+  let handlePing = (ws, args) => {
+    ws.send(JSON.stringify({method: 'pong'}))
+  }
+
   const RTC_CONFIG = {
     iceServers: [{'urls': 'stun:stun.l.google.com:19302'}],
     mandatory: {OfferToReceiveVideo: true, OfferToReceiveAudio: true}
@@ -112,7 +116,8 @@ function PionSession (domain, sessionKey, mediaStream) { // eslint-disable-line 
         'candidate': handleCandidate,
         'sdp': handleSdp,
         'members': handleMembers,
-        'exit': handleExit
+        'exit': handleExit,
+        'ping': handlePing
       }
 
       if (!dispatchMethods[message.method]) {
