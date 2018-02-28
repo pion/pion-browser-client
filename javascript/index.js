@@ -1,6 +1,6 @@
 /* eslint-env browser */
 
-let PionEvents = window.PionEvents = {
+const PionEvents = window.PionEvents = {
   WEBSOCKET_OPEN: 'WEBSOCKET_OPEN',
   WEBSOCKET_ERROR: 'WEBSOCKET_ERROR',
   WEBSOCKET_CLOSE: 'WEBSOCKET_CLOSE',
@@ -16,13 +16,18 @@ function PionSession (domain, sessionKey, mediaStream) { // eslint-disable-line 
     return new PionSession(domain, sessionKey, mediaStream)
   }
 
+  const RTC_CONFIG = {
+    iceServers: [{'urls': 'stun:stun.l.google.com:19302'}],
+    mandatory: {OfferToReceiveVideo: true, OfferToReceiveAudio: true}
+  }
+
   let peerConnections = {}
-  let getPeerConnection = (remoteSessionKey, ws) => {
+  const getPeerConnection = (remoteSessionKey, ws) => {
     if (peerConnections[remoteSessionKey]) {
       return peerConnections[remoteSessionKey]
     }
 
-    let pc = peerConnections[remoteSessionKey] = new RTCPeerConnection(RTC_CONFIG)
+    const pc = peerConnections[remoteSessionKey] = new RTCPeerConnection(RTC_CONFIG)
     pc.onicecandidate = event => {
       if (!event.candidate) {
         return
@@ -52,10 +57,10 @@ function PionSession (domain, sessionKey, mediaStream) { // eslint-disable-line 
     return pc
   }
 
-  let handleMembers = (ws, args) => {
+  const handleMembers = (ws, args) => {
     args.members.forEach(remoteSessionKey => {
       if (remoteSessionKey !== sessionKey) {
-        let peerConnection = getPeerConnection(remoteSessionKey, ws)
+        const peerConnection = getPeerConnection(remoteSessionKey, ws)
         peerConnection.createOffer(offer => {
           peerConnection.setLocalDescription(offer, () => {
             ws.send(JSON.stringify({method: 'sdp', args: {src: sessionKey, dst: remoteSessionKey, sdp: offer.toJSON()}}))
@@ -65,8 +70,8 @@ function PionSession (domain, sessionKey, mediaStream) { // eslint-disable-line 
     })
   }
 
-  let handleSdp = (ws, args) => {
-    let peerConnection = getPeerConnection(args.src, ws)
+  const handleSdp = (ws, args) => {
+    const peerConnection = getPeerConnection(args.src, ws)
     peerConnection.setRemoteDescription(new RTCSessionDescription(args.sdp), () => {
       if (args.sdp.type === 'answer') {
         return
@@ -79,32 +84,38 @@ function PionSession (domain, sessionKey, mediaStream) { // eslint-disable-line 
       })
     })
   }
-  let handleCandidate = (ws, args) => {
-    let peerConnection = getPeerConnection(args.src, ws)
+  const handleCandidate = (ws, args) => {
+    const peerConnection = getPeerConnection(args.src, ws)
     peerConnection.addIceCandidate(new RTCIceCandidate(args.candidate))
   }
 
-  let handleExit = (ws, args) => {
-    let peerConnection = getPeerConnection(args.src, mediaStream, ws)
+  const removePeer = remoteSessionKey => {
+    const peerConnection = peerConnections[remoteSessionKey]
     if (peerConnection) {
       peerConnection.close()
+      delete peerConnections[remoteSessionKey]
     }
-    this.eventHandler({type: PionEvents.PEER_LEAVE_ROOM, sessionKey: args.sessionKey})
+    this.eventHandler({type: PionEvents.PEER_LEAVE_ROOM, sessionKey: remoteSessionKey})
   }
 
-  let handlePing = (ws, args) => {
+  const handleExit = (ws, args) => {
+    removePeer(args.sessionKey)
+  }
+
+  const handlePing = (ws, args) => {
     ws.send(JSON.stringify({method: 'pong'}))
   }
 
-  const RTC_CONFIG = {
-    iceServers: [{'urls': 'stun:stun.l.google.com:19302'}],
-    mandatory: {OfferToReceiveVideo: true, OfferToReceiveAudio: true}
-  }
+  const MAX_TIMEOUT = 2500
+  const STEP_TIMEOUT = 500
+  let currentTimeout = 0
 
-  this.start = () => {
-    if (!this.eventHandler) {
-      throw new Error('You must set an event handler')
+  const websocketLoop = () => {
+    if (currentTimeout >= MAX_TIMEOUT) {
+      currentTimeout = 0
     }
+    currentTimeout += STEP_TIMEOUT
+
     const ws = new WebSocket(`wss://${domain}?sessionKey=${sessionKey}`)
     ws.onmessage = () => {
       let message = JSON.parse(event.data)
@@ -130,10 +141,24 @@ function PionSession (domain, sessionKey, mediaStream) { // eslint-disable-line 
       this.eventHandler({type: PionEvents.WEBSOCKET_ERROR, event})
     }
     ws.onclose = event => {
+      for (var key in peerConnections) {
+        removePeer(key)
+      }
+      peerConnections = {}
+
       this.eventHandler({type: PionEvents.WEBSOCKET_CLOSE, event})
+      setTimeout(websocketLoop, currentTimeout)
     }
     ws.onopen = event => {
       this.eventHandler({type: PionEvents.WEBSOCKET_OPEN, event})
     }
+  }
+
+  this.start = () => {
+    if (!this.eventHandler) {
+      throw new Error('You must set an event handler')
+    }
+
+    websocketLoop()
   }
 }
