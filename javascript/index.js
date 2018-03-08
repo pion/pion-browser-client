@@ -11,11 +11,12 @@ const PionEvents = window.PionEvents = {
   PEER_P2P_SIGNALING_STATUS: 'PEER_P2P_SIGNALING_STATUS'
 }
 
-function PionSession (domain, sessionKey, mediaStream) { // eslint-disable-line no-unused-vars
+function PionSession (domain, authToken, mediaStream) { // eslint-disable-line no-unused-vars
   if (!(this instanceof PionSession)) {
-    return new PionSession(domain, sessionKey, mediaStream)
+    return new PionSession(domain, authToken, mediaStream)
   }
 
+  const SESSION_KEY = JSON.parse(atob(authToken.split('.')[1])).sessionKey
   const RTC_CONFIG = {
     iceServers: [{'urls': 'stun:stun.l.google.com:19302'}],
     mandatory: {OfferToReceiveVideo: true, OfferToReceiveAudio: true}
@@ -33,7 +34,7 @@ function PionSession (domain, sessionKey, mediaStream) { // eslint-disable-line 
         return
       }
 
-      ws.send(JSON.stringify({method: 'candidate', args: {src: sessionKey, dst: remoteSessionKey, candidate: event.candidate.toJSON()}}))
+      ws.send(JSON.stringify({method: 'candidate', args: {src: SESSION_KEY, dst: remoteSessionKey, candidate: event.candidate.toJSON()}}))
     }
 
     pc.oniceconnectionstatechange = (event) => {
@@ -59,11 +60,11 @@ function PionSession (domain, sessionKey, mediaStream) { // eslint-disable-line 
 
   const handleMembers = (ws, args) => {
     args.members.forEach(remoteSessionKey => {
-      if (remoteSessionKey !== sessionKey) {
+      if (remoteSessionKey !== SESSION_KEY) {
         const peerConnection = getPeerConnection(remoteSessionKey, ws)
         peerConnection.createOffer(offer => {
           peerConnection.setLocalDescription(offer, () => {
-            ws.send(JSON.stringify({method: 'sdp', args: {src: sessionKey, dst: remoteSessionKey, sdp: offer.toJSON()}}))
+            ws.send(JSON.stringify({method: 'sdp', args: {src: SESSION_KEY, dst: remoteSessionKey, sdp: offer.toJSON()}}))
           })
         })
       }
@@ -79,7 +80,7 @@ function PionSession (domain, sessionKey, mediaStream) { // eslint-disable-line 
 
       peerConnection.createAnswer(answer => {
         peerConnection.setLocalDescription(answer, () => {
-          ws.send(JSON.stringify({method: 'sdp', args: {src: sessionKey, dst: args.src, sdp: answer.toJSON()}}))
+          ws.send(JSON.stringify({method: 'sdp', args: {src: SESSION_KEY, dst: args.src, sdp: answer.toJSON()}}))
         })
       })
     })
@@ -116,7 +117,7 @@ function PionSession (domain, sessionKey, mediaStream) { // eslint-disable-line 
     }
     currentTimeout += STEP_TIMEOUT
 
-    const ws = new WebSocket(`wss://${domain}?sessionKey=${sessionKey}`)
+    const ws = new WebSocket(`wss://${domain}?authToken=${authToken}`)
     ws.onmessage = () => {
       let message = JSON.parse(event.data)
       if (!message) {
