@@ -109,7 +109,10 @@ function PionSession (domain, authToken, mediaStream) { // eslint-disable-line n
 
   const MAX_TIMEOUT = 2500
   const STEP_TIMEOUT = 500
+
   let currentTimeout = 0
+  let ws = null
+  let disableReconnect = false
 
   const websocketLoop = () => {
     if (currentTimeout >= MAX_TIMEOUT) {
@@ -117,7 +120,7 @@ function PionSession (domain, authToken, mediaStream) { // eslint-disable-line n
     }
     currentTimeout += STEP_TIMEOUT
 
-    const ws = new WebSocket(`wss://${domain}?authToken=${authToken}`)
+    ws = new WebSocket(`wss://${domain}?authToken=${authToken}`)
     ws.onmessage = () => {
       let message = JSON.parse(event.data)
       if (!message) {
@@ -148,19 +151,33 @@ function PionSession (domain, authToken, mediaStream) { // eslint-disable-line n
       peerConnections = {}
 
       this.eventHandler({type: PionEvents.WEBSOCKET_CLOSE, event})
-      setTimeout(websocketLoop, currentTimeout)
+      if (!disableReconnect) {
+        setTimeout(websocketLoop, currentTimeout)
+      }
     }
     ws.onopen = event => {
       this.eventHandler({type: PionEvents.WEBSOCKET_OPEN, event})
     }
   }
 
+  let started = false
   this.start = () => {
     if (!this.eventHandler) {
       throw new Error('You must set an event handler')
     }
 
+    if (started) {
+      throw new Error('PionSession may only be started once')
+    }
+    started = true
+
     websocketLoop()
+  }
+
+  this.stop = () => {
+    if (ws) {
+      ws.close()
+    }
   }
 }
 
