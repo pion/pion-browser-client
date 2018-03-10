@@ -163,3 +163,5 @@ function PionSession (domain, authToken, mediaStream) { // eslint-disable-line n
     websocketLoop()
   }
 }
+
+export { PionEvents, PionSession }
