@@ -18,7 +18,7 @@ function PionSession (domain, authToken, mediaStream) { // eslint-disable-line n
 
   const SESSION_KEY = JSON.parse(atob(authToken.split('.')[1])).sessionKey
   const RTC_CONFIG = {
-    iceServers: [{'urls': 'stun:stun.l.google.com:19302'}],
+    iceServers: [{'urls': 'stun:turn.pion.ly'}],
     mandatory: {OfferToReceiveVideo: true, OfferToReceiveAudio: true}
   }
 
