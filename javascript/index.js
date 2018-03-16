@@ -11,14 +11,14 @@ const PionEvents = window.PionEvents = {
   PEER_P2P_SIGNALING_STATUS: 'PEER_P2P_SIGNALING_STATUS'
 }
 
-function PionSession (domain, authToken, mediaStream) { // eslint-disable-line no-unused-vars
+function PionSession (FQDN, authToken, mediaStream) { // eslint-disable-line no-unused-vars
   if (!(this instanceof PionSession)) {
-    return new PionSession(domain, authToken, mediaStream)
+    return new PionSession(FQDN, authToken, mediaStream)
   }
 
   const SESSION_KEY = JSON.parse(atob(authToken.split('.')[1])).sessionKey
   const RTC_CONFIG = {
-    iceServers: [{'urls': 'stun:turn.pion.ly'}],
+    iceServers: [{'urls': `stun:turn.${FQDN}`}],
     mandatory: {OfferToReceiveVideo: true, OfferToReceiveAudio: true}
   }
 
@@ -120,7 +120,7 @@ function PionSession (domain, authToken, mediaStream) { // eslint-disable-line n
     }
     currentTimeout += STEP_TIMEOUT
 
-    ws = new WebSocket(`wss://${domain}?authToken=${authToken}`)
+    ws = new WebSocket(`wss://signaler.${FQDN}?authToken=${authToken}`)
     ws.onmessage = () => {
       let message = JSON.parse(event.data)
       if (!message) {
