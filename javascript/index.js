@@ -8,7 +8,8 @@ const PionEvents = window.PionEvents = {
   PEER_ENTER_ROOM: 'PEER_ENTER_ROOM',
   PEER_LEAVE_ROOM: 'PEER_LEAVE_ROOM',
   PEER_P2P_MEDIA_STATUS: 'PEER_P2P_MEDIA_STATUS',
-  PEER_P2P_SIGNALING_STATUS: 'PEER_P2P_SIGNALING_STATUS'
+  PEER_P2P_SIGNALING_STATUS: 'PEER_P2P_SIGNALING_STATUS',
+  ERROR: 'ERROR'
 }
 
 function PionSession (FQDN, authToken, mediaStream) { // eslint-disable-line no-unused-vars
@@ -62,32 +63,41 @@ function PionSession (FQDN, authToken, mediaStream) { // eslint-disable-line no-
     args.members.forEach(remoteSessionKey => {
       if (remoteSessionKey !== SESSION_KEY) {
         const peerConnection = getPeerConnection(remoteSessionKey, ws)
-        peerConnection.createOffer(offer => {
-          peerConnection.setLocalDescription(offer, () => {
-            ws.send(JSON.stringify({method: 'sdp', args: {src: SESSION_KEY, dst: remoteSessionKey, sdp: offer.toJSON()}}))
+        let offer = null
+
+        peerConnection
+          .createOffer()
+          .then(createdOffer => {
+            offer = createdOffer
+            return peerConnection.setLocalDescription(offer)
           })
-        })
+          .then(() => ws.send(JSON.stringify({method: 'sdp', args: {src: SESSION_KEY, dst: remoteSessionKey, sdp: offer.toJSON()}})))
+          .catch(e => this.eventHandler({type: PionEvents.ERROR, message: 'Failed to create local offer', error: e}))
       }
     })
   }
 
   const handleSdp = (ws, args) => {
     const peerConnection = getPeerConnection(args.src, ws)
-    peerConnection.setRemoteDescription(new RTCSessionDescription(args.sdp), () => {
-      if (args.sdp.type === 'answer') {
-        return
-      }
+    let setRemoteDescPromise = peerConnection.setRemoteDescription(new RTCSessionDescription(args.sdp))
+      .catch(e => this.eventHandler({type: PionEvents.ERROR, message: 'Failed to handle SDP', error: e}))
+    if (args.sdp.type === 'answer') {
+      return
+    }
 
-      peerConnection.createAnswer(answer => {
-        peerConnection.setLocalDescription(answer, () => {
-          ws.send(JSON.stringify({method: 'sdp', args: {src: SESSION_KEY, dst: args.src, sdp: answer.toJSON()}}))
-        })
+    let answer
+    setRemoteDescPromise
+      .then(() => peerConnection.createAnswer())
+      .then(createdAnswer => {
+        answer = createdAnswer
+        peerConnection.setLocalDescription(answer)
       })
-    })
+      .then(() => ws.send(JSON.stringify({method: 'sdp', args: {src: SESSION_KEY, dst: args.src, sdp: answer.toJSON()}})))
   }
   const handleCandidate = (ws, args) => {
     const peerConnection = getPeerConnection(args.src, ws)
     peerConnection.addIceCandidate(new RTCIceCandidate(args.candidate))
+      .catch(e => this.eventHandler({type: PionEvents.ERROR, message: 'Failed to add ice candidate', error: e}))
   }
 
   const removePeer = remoteSessionKey => {
