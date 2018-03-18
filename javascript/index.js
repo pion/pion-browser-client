@@ -17,7 +17,6 @@ function PionSession (FQDN, authToken, mediaStream) { // eslint-disable-line no-
     return new PionSession(FQDN, authToken, mediaStream)
   }
 
-  const SESSION_KEY = JSON.parse(atob(authToken.split('.')[1])).sessionKey
   const RTC_CONFIG = {
     iceServers: [{'urls': `stun:turn.${FQDN}`}],
     mandatory: {OfferToReceiveVideo: true, OfferToReceiveAudio: true}
@@ -35,7 +34,7 @@ function PionSession (FQDN, authToken, mediaStream) { // eslint-disable-line no-
         return
       }
 
-      ws.send(JSON.stringify({method: 'candidate', args: {src: SESSION_KEY, dst: remoteSessionKey, candidate: event.candidate.toJSON()}}))
+      ws.send(JSON.stringify({method: 'candidate', args: {dst: remoteSessionKey, candidate: event.candidate.toJSON()}}))
     }
 
     pc.oniceconnectionstatechange = (event) => {
@@ -61,19 +60,17 @@ function PionSession (FQDN, authToken, mediaStream) { // eslint-disable-line no-
 
   const handleMembers = (ws, args) => {
     args.members.forEach(remoteSessionKey => {
-      if (remoteSessionKey !== SESSION_KEY) {
-        const peerConnection = getPeerConnection(remoteSessionKey, ws)
-        let offer = null
+      const peerConnection = getPeerConnection(remoteSessionKey, ws)
+      let offer = null
 
-        peerConnection
-          .createOffer()
-          .then(createdOffer => {
-            offer = createdOffer
-            return peerConnection.setLocalDescription(offer)
-          })
-          .then(() => ws.send(JSON.stringify({method: 'sdp', args: {src: SESSION_KEY, dst: remoteSessionKey, sdp: offer.toJSON()}})))
-          .catch(e => this.eventHandler({type: PionEvents.ERROR, message: 'Failed to create local offer', error: e}))
-      }
+      peerConnection
+        .createOffer()
+        .then(createdOffer => {
+          offer = createdOffer
+          return peerConnection.setLocalDescription(offer)
+        })
+        .then(() => ws.send(JSON.stringify({method: 'sdp', args: {dst: remoteSessionKey, sdp: offer.toJSON()}})))
+        .catch(e => this.eventHandler({type: PionEvents.ERROR, message: 'Failed to create local offer', error: e}))
     })
   }
 
@@ -92,7 +89,7 @@ function PionSession (FQDN, authToken, mediaStream) { // eslint-disable-line no-
         answer = createdAnswer
         peerConnection.setLocalDescription(answer)
       })
-      .then(() => ws.send(JSON.stringify({method: 'sdp', args: {src: SESSION_KEY, dst: args.src, sdp: answer.toJSON()}})))
+      .then(() => ws.send(JSON.stringify({method: 'sdp', args: {dst: args.src, sdp: answer.toJSON()}})))
   }
   const handleCandidate = (ws, args) => {
     const peerConnection = getPeerConnection(args.src, ws)
