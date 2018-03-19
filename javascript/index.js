@@ -4,7 +4,8 @@ const PionEvents = window.PionEvents = {
   WEBSOCKET_OPEN: 'WEBSOCKET_OPEN',
   WEBSOCKET_ERROR: 'WEBSOCKET_ERROR',
   WEBSOCKET_CLOSE: 'WEBSOCKET_CLOSE',
-  NEW_MEDIA: 'NEW_MEDIA',
+  MEDIA_START: 'MEDIA_START',
+  MEDIA_STOP: 'MEDIA_STOP',
   PEER_ENTER_ROOM: 'PEER_ENTER_ROOM',
   PEER_LEAVE_ROOM: 'PEER_LEAVE_ROOM',
   PEER_P2P_MEDIA_STATUS: 'PEER_P2P_MEDIA_STATUS',
@@ -12,9 +13,9 @@ const PionEvents = window.PionEvents = {
   ERROR: 'ERROR'
 }
 
-function PionSession (FQDN, authToken, mediaStream) { // eslint-disable-line no-unused-vars
+function PionSession (FQDN, authToken) { // eslint-disable-line no-unused-vars
   if (!(this instanceof PionSession)) {
-    return new PionSession(FQDN, authToken, mediaStream)
+    return new PionSession(FQDN, authToken)
   }
 
   const RTC_CONFIG = {
@@ -22,7 +23,30 @@ function PionSession (FQDN, authToken, mediaStream) { // eslint-disable-line no-
     mandatory: {OfferToReceiveVideo: true, OfferToReceiveAudio: true}
   }
 
+  const debounce = (func, wait) => {
+    let timeout
+    return function (...args) {
+      const context = this
+      clearTimeout(timeout)
+      timeout = setTimeout(() => func.apply(context, args), wait)
+    }
+  }
+
+  const startExchange = (ws, peerConnection, remoteSessionKey) => {
+    let offer = null
+
+    peerConnection
+      .createOffer()
+      .then(createdOffer => {
+        offer = createdOffer
+        return peerConnection.setLocalDescription(offer)
+      })
+      .then(() => ws.send(JSON.stringify({method: 'sdp', args: {dst: remoteSessionKey, sdp: offer.toJSON()}})))
+      .catch(e => this.eventHandler({type: PionEvents.ERROR, message: 'Failed to create local offer', error: e}))
+  }
+
   let peerConnections = {}
+  let mediaStreams = []
   const getPeerConnection = (remoteSessionKey, ws) => {
     if (peerConnections[remoteSessionKey]) {
       return peerConnections[remoteSessionKey]
@@ -41,37 +65,49 @@ function PionSession (FQDN, authToken, mediaStream) { // eslint-disable-line no-
       this.eventHandler({type: PionEvents.PEER_P2P_MEDIA_STATUS, sessionKey: remoteSessionKey, mediaState: pc.iceConnectionState})
     }
 
+    let negotiating = true
     pc.onsignalingstatechange = (event) => {
       this.eventHandler({type: PionEvents.PEER_P2P_SIGNALING_STATUS, sessionKey: remoteSessionKey, signalingState: pc.signalingState})
+      negotiating = pc.signalingState !== 'stable'
     }
 
-    let hasHandled = false
-    pc.ontrack = (event) => {
-      if (hasHandled) {
+    pc.onnegotiationneeded = debounce((event) => {
+      if (negotiating) {
         return
       }
-      hasHandled = true
-      this.eventHandler({type: PionEvents.NEW_MEDIA, media: event.streams[0], sessionKey: remoteSessionKey})
+      negotiating = true
+      startExchange(ws, pc, remoteSessionKey)
+    }, 20)
+
+    let handledMediaStreamIds = []
+    pc.ontrack = (event) => {
+      let mediaStream = event.streams[0]
+      let foundIndex = handledMediaStreamIds.indexOf(mediaStream.id)
+      if (foundIndex !== -1) {
+        return
+      }
+      handledMediaStreamIds.push(mediaStream.id)
+
+      event.track.onended = () => {
+        if (handledMediaStreamIds.indexOf(mediaStream.id) === -1) {
+          return
+        }
+        handledMediaStreamIds = handledMediaStreamIds.filter(mediaStreamId => mediaStreamId !== mediaStream.id)
+        this.eventHandler({type: PionEvents.MEDIA_STOP, media: mediaStream, sessionKey: remoteSessionKey})
+      }
+
+      this.eventHandler({type: PionEvents.MEDIA_START, media: mediaStream, sessionKey: remoteSessionKey})
     }
-    mediaStream.getTracks().forEach(track => pc.addTrack(track, mediaStream))
+
+    for (let mediaStream of mediaStreams) {
+      mediaStream.getTracks().forEach(track => pc.addTrack(track, mediaStream))
+    }
 
     return pc
   }
 
   const handleMembers = (ws, args) => {
-    args.members.forEach(remoteSessionKey => {
-      const peerConnection = getPeerConnection(remoteSessionKey, ws)
-      let offer = null
-
-      peerConnection
-        .createOffer()
-        .then(createdOffer => {
-          offer = createdOffer
-          return peerConnection.setLocalDescription(offer)
-        })
-        .then(() => ws.send(JSON.stringify({method: 'sdp', args: {dst: remoteSessionKey, sdp: offer.toJSON()}})))
-        .catch(e => this.eventHandler({type: PionEvents.ERROR, message: 'Failed to create local offer', error: e}))
-    })
+    args.members.forEach(remoteSessionKey => startExchange(ws, getPeerConnection(remoteSessionKey, ws), remoteSessionKey))
   }
 
   const handleSdp = (ws, args) => {
@@ -185,6 +221,33 @@ function PionSession (FQDN, authToken, mediaStream) { // eslint-disable-line no-
     if (ws) {
       ws.close()
     }
+  }
+
+  let mutatePeerMediaStreams = (mediaStream, mutation) => {
+    for (let sessionKey in peerConnections) {
+      let pc = peerConnections[sessionKey]
+
+      if (mutation === 'addTrack') {
+        mediaStream.getTracks().forEach(track => pc.addTrack(track, mediaStream))
+      } else if (mutation === 'removeTrack') {
+        let trackIds = mediaStream.getTracks().map(track => track.id)
+
+        for (let rtpSender of pc.getSenders()) {
+          if (trackIds.indexOf(rtpSender.track.id) !== -1) {
+            pc.removeTrack(rtpSender)
+          }
+        }
+      }
+    }
+  }
+
+  this.addMedia = mediaStream => {
+    mediaStreams.push(mediaStream)
+    mutatePeerMediaStreams(mediaStream, 'addTrack')
+  }
+  this.removeMedia = mediaStream => {
+    mediaStreams = mediaStreams.filter(knownMediaStream => mediaStream.id !== knownMediaStream.id)
+    mutatePeerMediaStreams(mediaStream, 'removeTrack')
   }
 }
 
