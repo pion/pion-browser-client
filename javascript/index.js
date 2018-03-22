@@ -23,15 +23,6 @@ function PionSession (FQDN, authToken) { // eslint-disable-line no-unused-vars
     mandatory: {OfferToReceiveVideo: true, OfferToReceiveAudio: true}
   }
 
-  const debounce = (func, wait) => {
-    let timeout
-    return function (...args) {
-      const context = this
-      clearTimeout(timeout)
-      timeout = setTimeout(() => func.apply(context, args), wait)
-    }
-  }
-
   const startExchange = (ws, peerConnection, remoteSessionKey) => {
     let offer = null
 
@@ -65,19 +56,9 @@ function PionSession (FQDN, authToken) { // eslint-disable-line no-unused-vars
       this.eventHandler({type: PionEvents.PEER_P2P_MEDIA_STATUS, sessionKey: remoteSessionKey, mediaState: pc.iceConnectionState})
     }
 
-    let negotiating = true
     pc.onsignalingstatechange = (event) => {
       this.eventHandler({type: PionEvents.PEER_P2P_SIGNALING_STATUS, sessionKey: remoteSessionKey, signalingState: pc.signalingState})
-      negotiating = pc.signalingState !== 'stable'
     }
-
-    pc.onnegotiationneeded = debounce((event) => {
-      if (negotiating) {
-        return
-      }
-      negotiating = true
-      startExchange(ws, pc, remoteSessionKey)
-    }, 20)
 
     let handledMediaStreamIds = []
     pc.ontrack = (event) => {
@@ -238,6 +219,7 @@ function PionSession (FQDN, authToken) { // eslint-disable-line no-unused-vars
           }
         }
       }
+      startExchange(ws, pc, sessionKey)
     }
   }
 
