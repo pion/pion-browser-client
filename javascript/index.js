@@ -19,7 +19,14 @@ function PionSession (FQDN, authToken) { // eslint-disable-line no-unused-vars
   }
 
   const RTC_CONFIG = {
-    iceServers: [{'urls': `stun:turn.${FQDN}`}],
+    iceTransportPolicy: 'relay',
+    iceServers: [
+      {
+        'urls': `turn:turn.${FQDN}`,
+        'credential': 'password',
+        'username': 'username'
+      }
+    ],
     mandatory: {OfferToReceiveVideo: true, OfferToReceiveAudio: true}
   }
 
