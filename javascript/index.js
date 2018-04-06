@@ -19,8 +19,9 @@ function PionSession (FQDN, authToken) { // eslint-disable-line no-unused-vars
   }
 
   const RTC_CONFIG = {
-    iceTransportPolicy: 'relay',
+    // iceTransportPolicy: 'relay',
     iceServers: [
+      {'urls': `stun:turn.${FQDN}`},
       {
         'urls': `turn:turn.${FQDN}`,
         'credential': 'password',
