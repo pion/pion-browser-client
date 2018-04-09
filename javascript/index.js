@@ -13,13 +13,13 @@ const PionEvents = window.PionEvents = {
   ERROR: 'ERROR'
 }
 
-function PionSession (FQDN, authToken) { // eslint-disable-line no-unused-vars
+function PionSession (FQDN, authToken, iceTransportPolicy = 'all') { // eslint-disable-line no-unused-vars
   if (!(this instanceof PionSession)) {
-    return new PionSession(FQDN, authToken)
+    return new PionSession(FQDN, authToken, iceTransportPolicy)
   }
 
   const RTC_CONFIG = {
-    // iceTransportPolicy: 'relay',
+    iceTransportPolicy,
     iceServers: [
       {'urls': `stun:turn.${FQDN}`},
       {
