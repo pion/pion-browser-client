@@ -1,6 +1,6 @@
 {
   "name": "pion-browser-client",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Browser Client for Pion",
   "main": "index.js",
   "repository": {

@@ -13,9 +13,9 @@ const PionEvents = window.PionEvents = {
   ERROR: 'ERROR'
 }
 
-function PionSession (FQDN, authToken, iceTransportPolicy = 'all') { // eslint-disable-line no-unused-vars
+function PionSession (FQDN, sessionParams, iceTransportPolicy = 'all') { // eslint-disable-line no-unused-vars
   if (!(this instanceof PionSession)) {
-    return new PionSession(FQDN, authToken, iceTransportPolicy)
+    return new PionSession(FQDN, sessionParams, iceTransportPolicy)
   }
 
   const RTC_CONFIG = {
@@ -152,7 +152,7 @@ function PionSession (FQDN, authToken, iceTransportPolicy = 'all') { // eslint-d
     }
     currentTimeout += STEP_TIMEOUT
 
-    ws = new WebSocket(`wss://signaler.${FQDN}?authToken=${authToken}`)
+    ws = new WebSocket(`wss://signaler.${FQDN}?${sessionParams}`)
     ws.onmessage = () => {
       let message = JSON.parse(event.data)
       if (!message) {
