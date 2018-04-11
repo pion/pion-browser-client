@@ -13,22 +13,20 @@ const PionEvents = window.PionEvents = {
   ERROR: 'ERROR'
 }
 
-function PionSession (FQDN, sessionParams, iceTransportPolicy = 'all') { // eslint-disable-line no-unused-vars
+function PionSession (signalerUri, sessionParams, rtcPeerConfiguration) { // eslint-disable-line no-unused-vars
   if (!(this instanceof PionSession)) {
-    return new PionSession(FQDN, sessionParams, iceTransportPolicy)
+    return new PionSession(signalerUri, sessionParams, rtcPeerConfiguration)
   }
 
-  const RTC_CONFIG = {
-    iceTransportPolicy,
+  const DEFAULT_RTC_PEER_CONFIG = {
     iceServers: [
-      {'urls': `stun:turn.${FQDN}`},
-      {
-        'urls': `turn:turn.${FQDN}`,
-        'credential': 'password',
-        'username': 'username'
-      }
+      {'urls': `stun:turn.pion.ly`}
     ],
     mandatory: {OfferToReceiveVideo: true, OfferToReceiveAudio: true}
+  }
+
+  if (rtcPeerConfiguration === null || typeof rtcPeerConfiguration !== 'object') {
+    rtcPeerConfiguration = DEFAULT_RTC_PEER_CONFIG
   }
 
   const startExchange = (ws, peerConnection, remoteSessionKey) => {
@@ -51,7 +49,7 @@ function PionSession (FQDN, sessionParams, iceTransportPolicy = 'all') { // esli
       return peerConnections[remoteSessionKey]
     }
 
-    const pc = peerConnections[remoteSessionKey] = new RTCPeerConnection(RTC_CONFIG)
+    const pc = peerConnections[remoteSessionKey] = new RTCPeerConnection(rtcPeerConfiguration)
     pc.onicecandidate = event => {
       if (!event.candidate) {
         return
@@ -152,7 +150,7 @@ function PionSession (FQDN, sessionParams, iceTransportPolicy = 'all') { // esli
     }
     currentTimeout += STEP_TIMEOUT
 
-    ws = new WebSocket(`wss://signaler.${FQDN}?${sessionParams}`)
+    ws = new WebSocket(`wss://${signalerUri}?${sessionParams}`)
     ws.onmessage = () => {
       let message = JSON.parse(event.data)
       if (!message) {
