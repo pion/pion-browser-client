@@ -38,7 +38,7 @@ function PionSession (signalerUri, sessionParams, rtcPeerConfiguration) { // esl
         offer = createdOffer
         return peerConnection.setLocalDescription(offer)
       })
-      .then(() => ws.send(JSON.stringify({method: 'sdp', args: {dst: remoteSessionKey, sdp: offer.toJSON()}})))
+      .then(() => ws.send(JSON.stringify({method: 'sdp', args: {dst: remoteSessionKey, sdp: offer}})))
       .catch(e => this.eventHandler({type: PionEvents.ERROR, message: 'Failed to create local offer', error: e}))
   }
 
@@ -55,7 +55,7 @@ function PionSession (signalerUri, sessionParams, rtcPeerConfiguration) { // esl
         return
       }
 
-      ws.send(JSON.stringify({method: 'candidate', args: {dst: remoteSessionKey, candidate: event.candidate.toJSON()}}))
+      ws.send(JSON.stringify({method: 'candidate', args: {dst: remoteSessionKey, candidate: event.candidate}}))
     }
 
     pc.oniceconnectionstatechange = (event) => {
@@ -112,7 +112,7 @@ function PionSession (signalerUri, sessionParams, rtcPeerConfiguration) { // esl
         answer = createdAnswer
         peerConnection.setLocalDescription(answer)
       })
-      .then(() => ws.send(JSON.stringify({method: 'sdp', args: {dst: args.src, sdp: answer.toJSON()}})))
+      .then(() => ws.send(JSON.stringify({method: 'sdp', args: {dst: args.src, sdp: answer}})))
   }
   const handleCandidate = (ws, args) => {
     const peerConnection = getPeerConnection(args.src, ws)
@@ -151,7 +151,7 @@ function PionSession (signalerUri, sessionParams, rtcPeerConfiguration) { // esl
     currentTimeout += STEP_TIMEOUT
 
     ws = new WebSocket(`wss://${signalerUri}?${sessionParams}`)
-    ws.onmessage = () => {
+    ws.onmessage = event => {
       let message = JSON.parse(event.data)
       if (!message) {
         throw new Error(`Failed to parse ${event.data}`)
